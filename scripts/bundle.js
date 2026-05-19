@@ -1,9 +1,8 @@
 import { build } from 'bun'
 
 const opts = { minify: true, target: 'browser' };
-const debug = process.argv.includes('--prod') ? {} : { define: { DEBUG: 'true' } };
 
-await build({ ...opts, ...debug, entrypoints: ['src/article.js', 'src/comments.js', 'src/nav.js'], outdir: 'assets/js' });
+await build({ ...opts, entrypoints: ['src/article.js', 'src/comments.js', 'src/nav.js'], outdir: 'assets/js' });
 await build({ ...opts, entrypoints: ['src/shiki.js'], outdir: 'assets/js' })
 
 await build({

@@ -3,7 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!section) { return; }
 
   const slug = section.dataset.post;
-  const sitekey = typeof DEBUG !== 'undefined' ? '' : (section.dataset.sitekey || '');
+  const sitekey = section.dataset.sitekey || '';
   const modal = document.getElementById('comment-modal');
   const commentModal = modal.querySelector('.comment-modal');
   const successBox = modal.querySelector('.modal-success-box');

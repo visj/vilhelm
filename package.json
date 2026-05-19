@@ -1,9 +1,7 @@
 {
   "scripts": {
     "bundle": "bun run scripts/bundle.js",
-    "bundle:prod": "bun run scripts/bundle.js --prod",
-    "build": "go run main.go",
-    "build:prod": "bun run scripts/bundle.js --prod && go run main.go"
+    "build": "bun run scripts/bundle.js && go run main.go"
   },
   "dependencies": {
     "shiki": "^1.0.0"
