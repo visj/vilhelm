@@ -264,12 +264,15 @@ em {
 
 /* ── Blockquote ──────────────────────────────────────────────────────────── */
 
-blockquote {
+blockquote, .indent {
     margin: 1rem 0;
+    font-size: 0.9rem;
     padding: 0 0 0 1.5rem;
-    border-left: 3px solid #ccc;
     color: #444;
-    font-style: italic;
+}
+
+blockquote {
+    border-left: 3px solid #999;
 }
 
 blockquote p:last-child {
@@ -304,6 +307,14 @@ hr {
 
 figure {
     margin: 2rem 0;
+    text-align: center;
+}
+
+figure img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
 }
 
 figcaption {
