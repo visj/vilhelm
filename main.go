@@ -9,7 +9,9 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
+	"encoding/xml"
 	"flag"
 	"fmt"
 	"io"
@@ -35,6 +37,9 @@ const (
 	distDir    = "dist"
 	layoutFile = "layout.html"
 	certDir    = ".certs"
+	siteURL    = "https://www.vilhelm.se"
+	siteName   = "Vilhelm"
+	homeTitle  = "Vilhelms brokiga betraktelser"
 )
 
 // ── Post metadata ─────────────────────────────────────────────────────────────
@@ -117,7 +122,10 @@ func build() error {
 	if err := generateTopics(layoutStr, posts); err != nil {
 		return err
 	}
-	return generateBrowse(layoutStr, posts)
+	if err := generateBrowse(layoutStr, posts); err != nil {
+		return err
+	}
+	return generateSitemap(posts)
 }
 
 func renderContent(layout string) ([]Post, error) {
@@ -166,6 +174,9 @@ func renderPosts(layout string) ([]Post, error) {
 		indexPath := filepath.Join(distDir, "index.html")
 		if posts[0].DestPath != indexPath {
 			if err := copyFile(posts[0].DestPath, indexPath); err != nil {
+				return nil, err
+			}
+			if err := overridePageTitle(indexPath, posts[0].Title, homeTitle); err != nil {
 				return nil, err
 			}
 			fmt.Printf("index: %s\n", posts[0].URL)
@@ -254,6 +265,7 @@ func renderFile(path, src, layout string, next *Post) (Post, error) {
 	author := extractMeta(head, "author")
 	description := extractMeta(head, "description")
 	tagsRaw := extractMeta(head, "tags")
+	lang := langFromPath(path)
 
 	var tags []string
 	for _, t := range strings.Split(tagsRaw, ",") {
@@ -284,6 +296,7 @@ func renderFile(path, src, layout string, next *Post) (Post, error) {
 	head = strings.ReplaceAll(head, "{{JS}}", localJS)
 	body = strings.ReplaceAll(body, "{{CSS}}", localCSS)
 	body = strings.ReplaceAll(body, "{{JS}}", localJS)
+	head += buildSEOTags(title, description, postURL, lang, date, author, isPost)
 
 	container := "container"
 	if extractMeta(head, "layout") == "wide" {
@@ -298,6 +311,7 @@ func renderFile(path, src, layout string, next *Post) (Post, error) {
 	wrapped := "<div class=\"" + container + "\">\n" + body + "\n</div>\n" + scripts
 	out := strings.ReplaceAll(layout, "{{HEAD}}", head)
 	out = strings.ReplaceAll(out, "{{BODY}}", wrapped)
+	out = strings.ReplaceAll(out, "{{LANG}}", lang)
 	turnstileScript, turnstileWidget := "", ""
 	if os.Getenv("TURNSTILE_SECRET") != "" {
 		turnstileScript = `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`
@@ -326,7 +340,7 @@ func renderFile(path, src, layout string, next *Post) (Post, error) {
 		Description: description,
 		Date:        date,
 		Tags:        tags,
-		Lang:        langFromPath(path),
+		Lang:        lang,
 		URL:         postURL,
 		DestPath:    dest,
 	}, nil
@@ -334,35 +348,44 @@ func renderFile(path, src, layout string, next *Post) (Post, error) {
 
 func commentSection(path, postURL string) string {
 	slug := strings.TrimPrefix(postURL, "/")
+
 	var commentsDiv string
 	if data, err := os.ReadFile(filepath.Join(filepath.Dir(path), "comments.html")); err == nil {
 		if content := strings.TrimSpace(string(data)); content != "" {
 			commentsDiv = "<div class=\"comments-list\">\n<h2>Kommentarer</h2>\n" + content + "\n</div>\n"
 		}
 	}
-	turnstileScript := ""
-	turnstileWidget := ""
+
+	sitekeyAttr := ""
+	turnstileContainer := ""
 	if os.Getenv("TURNSTILE_SECRET") != "" {
-		turnstileScript = "<script src=\"https://challenges.cloudflare.com/turnstile/v0/api.js\" async defer></script>\n"
-		turnstileWidget = "\n  <div class=\"cf-turnstile\" data-sitekey=\"0x4AAAAAADQiKUKHRY-f0Np2\" data-theme=\"light\"></div>"
+		sitekeyAttr = ` data-sitekey="0x4AAAAAADQiKUKHRY-f0Np2"`
+		turnstileContainer = "\n<div id=\"cf-turnstile-container\"></div>"
 	}
-	return fmt.Sprintf(`%s<section class="comments" data-post="%s">
-%s<div class="comment-form-wrap">
-<h3>Lämna en kommentar</h3>
-<div class="reply-notice" style="display:none">
-  Svarar på: <span class="reply-to-name"></span>
-  <button class="cancel-reply" type="button">×</button>
+
+	return fmt.Sprintf(`<section class="comments" data-post="%s"%s>
+%s<button type="button" class="open-comment-btn">Lämna en kommentar</button>
+<div class="comment-modal-backdrop" id="comment-modal" hidden>
+<div class="comment-modal">
+<button class="modal-close" type="button" aria-label="Stäng">&#xD7;</button>
+<h3 class="modal-title">Lämna en kommentar</h3>
+<div class="modal-reply-context" hidden>
+<blockquote class="modal-reply-quote">
+<strong class="modal-reply-name"></strong>
+<p class="modal-reply-text"></p>
+</blockquote>
 </div>
 <form class="comment-form">
-  <input type="hidden" name="parent_id" value="">
-  <div class="form-field"><label for="c-name">Namn</label><input id="c-name" type="text" name="name" required></div>
-  <div class="form-field"><label for="c-email">E-post</label><input id="c-email" type="email" name="email" required></div>
-  <div class="form-field"><label for="c-text">Kommentar</label><textarea id="c-text" name="comment" rows="4" required></textarea></div>%s
-  <button type="submit">Skicka kommentar</button>
-  <p class="form-status"></p>
+<input type="hidden" name="parent_id" value="">
+<div class="form-field"><label for="c-name">Namn</label><input id="c-name" type="text" name="name" required autocomplete="name"></div>
+<div class="form-field"><label for="c-email">E-post</label><input id="c-email" type="email" name="email" required autocomplete="email"></div>
+<div class="form-field"><label for="c-text">Kommentar</label><textarea id="c-text" name="comment" rows="4" required></textarea></div>%s
+<button type="submit">Skicka kommentar</button>
+<p class="form-status"></p>
 </form>
 </div>
-</section>`, turnstileScript, slug, commentsDiv, turnstileWidget)
+</div>
+</section>`, slug, sitekeyAttr, commentsDiv, turnstileContainer)
 }
 
 // ── Topic / tag page generation ───────────────────────────────────────────────
@@ -471,9 +494,17 @@ func generateTagPages(layout string, posts []Post, base, indexTitle, backLabel s
 }
 
 func writePage(layout, path, head, body string) error {
+	title := extractBetween(head, "<title>", "</title>")
+	pageURL := strings.TrimSuffix(strings.TrimSuffix(path, "/index.html"), ".html")
+	if pageURL == "" {
+		pageURL = "/"
+	}
+	head += buildSEOTags(title, "", pageURL, "sv", "", "", false)
+
 	wrapped := "<div class=\"meta-container\">\n" + body + "\n</div>"
 	out := strings.ReplaceAll(layout, "{{HEAD}}", head)
 	out = strings.ReplaceAll(out, "{{BODY}}", wrapped)
+	out = strings.ReplaceAll(out, "{{LANG}}", "sv")
 	if !strings.HasSuffix(path, "/index.html") && strings.HasSuffix(path, ".html") {
 		path = strings.TrimSuffix(path, ".html") + "/index.html"
 	}
@@ -624,6 +655,175 @@ func sortedKeys(m map[string][]Post) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// ── SEO ───────────────────────────────────────────────────────────────────────
+
+// overridePageTitle replaces the <title>, og:title, and twitter:title in an
+// already-rendered HTML file. Used to give the homepage a stable site title
+// while the copied post page keeps its original title.
+func overridePageTitle(path, oldTitle, newTitle string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	html := string(data)
+	html = strings.Replace(html, "<title>"+oldTitle+"</title>", "<title>"+newTitle+"</title>", 1)
+	esc := htmlEsc(oldTitle)
+	newEsc := htmlEsc(newTitle)
+	html = strings.Replace(html, `og:title" content="`+esc+`"`, `og:title" content="`+newEsc+`"`, 1)
+	html = strings.Replace(html, `twitter:title" content="`+esc+`"`, `twitter:title" content="`+newEsc+`"`, 1)
+	return os.WriteFile(path, []byte(html), 0644)
+}
+
+func htmlEsc(s string) string {
+	return strings.NewReplacer(
+		`&`, `&amp;`,
+		`"`, `&quot;`,
+		`<`, `&lt;`,
+		`>`, `&gt;`,
+	).Replace(s)
+}
+
+func buildSEOTags(title, description, pageURL, lang, date, author string, isPost bool) string {
+	absURL := siteURL + pageURL
+
+	ogLocale := "sv_SE"
+	if lang == "en" {
+		ogLocale = "en_US"
+	}
+	ogType := "website"
+	if isPost {
+		ogType = "article"
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, `<link rel="canonical" href="%s">`, absURL)
+	fmt.Fprintf(&b, `<meta property="og:type" content="%s">`, ogType)
+	fmt.Fprintf(&b, `<meta property="og:url" content="%s">`, absURL)
+	fmt.Fprintf(&b, `<meta property="og:title" content="%s">`, htmlEsc(title))
+	fmt.Fprintf(&b, `<meta property="og:site_name" content="%s">`, siteName)
+	fmt.Fprintf(&b, `<meta property="og:locale" content="%s">`, ogLocale)
+	if description != "" {
+		fmt.Fprintf(&b, `<meta property="og:description" content="%s">`, htmlEsc(description))
+		fmt.Fprintf(&b, `<meta name="twitter:description" content="%s">`, htmlEsc(description))
+	}
+	b.WriteString(`<meta name="twitter:card" content="summary">`)
+	fmt.Fprintf(&b, `<meta name="twitter:title" content="%s">`, htmlEsc(title))
+
+	var jsonLD string
+	if isPost {
+		jsonLD = buildArticleJSONLD(title, description, absURL, date, author, lang)
+	} else {
+		jsonLD = buildWebPageJSONLD(title, description, absURL, lang)
+	}
+	fmt.Fprintf(&b, `<script type="application/ld+json">%s</script>`, jsonLD)
+
+	return b.String()
+}
+
+func buildArticleJSONLD(title, description, absURL, date, author, lang string) string {
+	type personLD struct {
+		Type string `json:"@type"`
+		Name string `json:"name"`
+	}
+	type orgLD struct {
+		Type string `json:"@type"`
+		Name string `json:"name"`
+		URL  string `json:"url"`
+	}
+	type articleLD struct {
+		Context       string   `json:"@context"`
+		Type          string   `json:"@type"`
+		Headline      string   `json:"headline"`
+		Description   string   `json:"description,omitempty"`
+		URL           string   `json:"url"`
+		InLanguage    string   `json:"inLanguage"`
+		DatePublished string   `json:"datePublished,omitempty"`
+		Author        personLD `json:"author"`
+		Publisher     orgLD    `json:"publisher"`
+	}
+	a := articleLD{
+		Context:       "https://schema.org",
+		Type:          "Article",
+		Headline:      title,
+		Description:   description,
+		URL:           absURL,
+		InLanguage:    lang,
+		DatePublished: date,
+		Author:        personLD{Type: "Person", Name: author},
+		Publisher:     orgLD{Type: "Organization", Name: siteName, URL: siteURL},
+	}
+	b, _ := json.Marshal(a)
+	return string(b)
+}
+
+func buildWebPageJSONLD(title, description, absURL, lang string) string {
+	type webPageLD struct {
+		Context     string `json:"@context"`
+		Type        string `json:"@type"`
+		Name        string `json:"name"`
+		Description string `json:"description,omitempty"`
+		URL         string `json:"url"`
+		InLanguage  string `json:"inLanguage"`
+	}
+	p := webPageLD{
+		Context:     "https://schema.org",
+		Type:        "WebPage",
+		Name:        title,
+		Description: description,
+		URL:         absURL,
+		InLanguage:  lang,
+	}
+	b, _ := json.Marshal(p)
+	return string(b)
+}
+
+func generateSitemap(posts []Post) error {
+	type sitemapURL struct {
+		Loc     string `xml:"loc"`
+		LastMod string `xml:"lastmod,omitempty"`
+	}
+	type urlSet struct {
+		XMLName xml.Name     `xml:"urlset"`
+		XMLNS   string       `xml:"xmlns,attr"`
+		URLs    []sitemapURL `xml:"url"`
+	}
+
+	postURLs := map[string]bool{}
+	var entries []sitemapURL
+	for _, p := range posts {
+		postURLs[p.URL] = true
+		entries = append(entries, sitemapURL{Loc: siteURL + p.URL, LastMod: p.Date})
+	}
+
+	// Include all other index.html pages built into dist/
+	_ = filepath.Walk(distDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || filepath.Base(path) != "index.html" {
+			return err
+		}
+		rel, _ := filepath.Rel(distDir, path)
+		dir := filepath.ToSlash(filepath.Dir(rel))
+		var u string
+		if dir == "." {
+			u = "/"
+		} else {
+			u = "/" + dir
+		}
+		if !postURLs[u] {
+			entries = append(entries, sitemapURL{Loc: siteURL + u})
+		}
+		return nil
+	})
+
+	us := urlSet{XMLNS: "http://www.sitemaps.org/schemas/sitemap/0.9", URLs: entries}
+	data, err := xml.MarshalIndent(us, "", "  ")
+	if err != nil {
+		return err
+	}
+	out := []byte(xml.Header + string(data) + "\n")
+	fmt.Printf("generated: %s\n", filepath.Join(distDir, "sitemap.xml"))
+	return os.WriteFile(filepath.Join(distDir, "sitemap.xml"), out, 0644)
 }
 
 // ── Asset pipeline ────────────────────────────────────────────────────────────

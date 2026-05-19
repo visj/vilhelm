@@ -2,10 +2,6 @@
     box-sizing: border-box;
 }
 
-html {
-    font-size: 18px;
-}
-
 body {
     font-family: Palatino Linotype, Book Antiqua, Palatino, Georgia, serif;
     font-size: 1rem;
@@ -50,7 +46,7 @@ nav {
     display: flex;
     align-items: center;
     border-bottom: 1px solid #ddd;
-    padding: 0.75rem 1rem;
+    padding: 2rem 1rem 0.25rem 1rem;
 }
 
 .nav-brand {
@@ -62,11 +58,6 @@ nav {
 
 .nav-brand a {
     text-decoration: none;
-}
-
-.nav-slogan {
-    font-size: 0.8rem;
-    font-style: italic;
 }
 
 .nav-links {
@@ -136,7 +127,7 @@ nav {
 
 .nav-links li a {
     display: inline-block;
-    font-size: 0.88rem;
+    font-size: 1rem;
     color: #4c4c4c;
     text-decoration: none;
     padding: 0rem 0.5rem;
@@ -159,13 +150,13 @@ h1, h2, h3, h4 {
 }
 
 h1 {
-    font-size: 2rem;
+    font-size: 1.6rem;
     margin-top: 0;
     letter-spacing: -0.01em;
 }
 
 h2 {
-    font-size: 1.5rem;
+    font-size: 1.3rem;
     border-bottom: 1px solid #e5e5e5;
 }
 
@@ -174,7 +165,7 @@ h3 {
 }
 
 h4 {
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-style: italic;
     font-weight: normal;
 }
@@ -551,6 +542,104 @@ button[type=submit]:disabled { opacity: 0.5; cursor: default; }
 }
 
 .cancel-reply:hover { color: #333; }
+
+/* ── Comment CTA button & modal ─────────────────────────────────────────── */
+
+.open-comment-btn {
+    display: inline-block;
+    margin-top: 1.5rem;
+    padding: 0.55rem 1.25rem;
+    background: #be6f56;
+    color: #fffffc;
+    border: none;
+    border-radius: 3px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.open-comment-btn:hover { background: #af401d; }
+
+.comment-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.comment-modal-backdrop[hidden] { display: none; }
+
+.comment-modal {
+    background: #fffffd;
+    border-radius: 6px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    position: relative;
+}
+
+.modal-close {
+    position: absolute;
+    top: 0.9rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1.3rem;
+    color: #aaa;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    line-height: 1;
+    font-family: inherit;
+}
+.modal-close:hover { color: #333; }
+
+.modal-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0 0 1.25rem;
+    color: #333;
+    padding-right: 2rem;
+}
+
+.modal-reply-context {
+    margin-bottom: 1.25rem;
+}
+
+.modal-reply-quote {
+    margin: 0;
+    padding: 0.6rem 0.9rem;
+    border-left: 3px solid #e0d8ce;
+    background: #f8f5f0;
+    border-radius: 0 3px 3px 0;
+}
+
+.modal-reply-quote strong {
+    display: block;
+    font-size: 0.82rem;
+    color: #555;
+    margin-bottom: 0.2rem;
+}
+
+.modal-reply-quote p {
+    margin: 0;
+    font-size: 0.88rem;
+    color: #888;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+@media (max-width: 600px) {
+    .comment-modal {
+        padding: 1.5rem 1.25rem;
+        max-height: 95vh;
+    }
+}
 
 /* ── Metadata / byline ───────────────────────────────────────────────────── */
 
