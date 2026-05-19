@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const slug = section.dataset.post;
   const sitekey = typeof DEBUG !== 'undefined' ? '' : (section.dataset.sitekey || '');
   const modal = document.getElementById('comment-modal');
+  const commentModal = modal.querySelector('.comment-modal');
+  const successBox = modal.querySelector('.modal-success-box');
   const modalTitle = modal.querySelector('.modal-title');
   const replyContext = modal.querySelector('.modal-reply-context');
   const replyName = modal.querySelector('.modal-reply-name');
@@ -60,8 +62,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function closeModal() {
     modal.hidden = true;
     document.body.style.overflow = '';
-    status.textContent = '';
+    commentModal.hidden = false;
+    successBox.hidden = true;
     form.reset();
+    status.textContent = '';
     if (sitekey && turnstileWidgetId != null && window.turnstile) {
       window.turnstile.reset(turnstileWidgetId);
     }
@@ -84,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   modal.querySelector('.modal-close').addEventListener('click', closeModal);
+  modal.querySelector('.modal-success-close').addEventListener('click', closeModal);
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !modal.hidden) { closeModal(); }
@@ -112,12 +117,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }),
     }).then(r => {
       if (r.ok) {
-        status.textContent = 'Tack. Din kommentar granskas innan publicering.';
         form.reset();
         if (sitekey && turnstileWidgetId != null && window.turnstile) {
           window.turnstile.reset(turnstileWidgetId);
         }
-        setTimeout(closeModal, 2000);
+        commentModal.hidden = true;
+        successBox.hidden = false;
       } else {
         status.textContent = 'Något gick fel — försök igen.';
       }

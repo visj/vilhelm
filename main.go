@@ -384,6 +384,10 @@ func commentSection(path, postURL string) string {
 <p class="form-status"></p>
 </form>
 </div>
+<div class="modal-success-box" hidden>
+<p>Tack! Din kommentar granskas innan publicering.</p>
+<button type="button" class="modal-success-close">Stäng</button>
+</div>
 </div>
 </section>`, slug, sitekeyAttr, commentsDiv, turnstileContainer)
 }
