@@ -65,8 +65,7 @@ type renderOpts struct {
 	next         *Post
 	destPath     string
 	canonicalURL string
-	title        string
-	description  string
+	headOverride string // raw <head> content whose tags replace the source page's tags
 }
 
 var assetMap map[string]string
@@ -198,8 +197,7 @@ func renderHomeIndex(layout string, latest postSource, metas []Post) error {
 		next:         next,
 		destPath:     filepath.Join(distDir, "index.html"),
 		canonicalURL: "/",
-		title:        title,
-		description:  extractMeta(head, "description"),
+		headOverride: head,
 	})
 	return err
 }
@@ -288,11 +286,10 @@ func renderFile(path, src, layout string, opts renderOpts) (Post, error) {
 		}
 	}
 
-	if opts.title != "" {
-		title = opts.title
-	}
-	if opts.description != "" {
-		description = opts.description
+	if opts.headOverride != "" {
+		head = mergeHeads(head, opts.headOverride)
+		title = extractBetween(head, "<title>", "</title>")
+		description = extractMeta(head, "description")
 	}
 
 	isPost := strings.HasPrefix(filepath.ToSlash(path), "views/posts/")
@@ -550,6 +547,58 @@ func extractBetween(s, open, close string) string {
 	return strings.TrimSpace(s[start : start+end])
 }
 
+func stripMetaTag(head, name string) string {
+	lower := strings.ToLower(head)
+	needle := `name="` + name + `"`
+	idx := strings.Index(lower, needle)
+	if idx == -1 {
+		return head
+	}
+	tagStart := strings.LastIndex(lower[:idx], "<meta")
+	if tagStart == -1 {
+		return head
+	}
+	tagEnd := strings.Index(lower[tagStart:], ">")
+	if tagEnd == -1 {
+		return head
+	}
+	return head[:tagStart] + head[tagStart+tagEnd+1:]
+}
+
+func mergeHeads(base, override string) string {
+	overrideTitle := extractBetween(override, "<title>", "</title>")
+	if overrideTitle != "" {
+		lower := strings.ToLower(base)
+		tStart := strings.Index(lower, "<title>")
+		tEnd := strings.Index(lower, "</title>")
+		if tStart != -1 && tEnd != -1 {
+			base = base[:tStart] + base[tEnd+len("</title>"):]
+		}
+		base += "<title>" + overrideTitle + "</title>"
+	}
+	overrideLower := strings.ToLower(override)
+	i := 0
+	for {
+		idx := strings.Index(overrideLower[i:], "<meta")
+		if idx == -1 {
+			break
+		}
+		idx += i
+		end := strings.Index(overrideLower[idx:], ">")
+		if end == -1 {
+			break
+		}
+		end += idx + 1
+		tag := override[idx:end]
+		if name := extractAttr(tag, "name"); name != "" {
+			base = stripMetaTag(base, name)
+			base += tag
+		}
+		i = end
+	}
+	return base
+}
+
 // extractMeta finds <meta name="NAME" content="VALUE"> regardless of attribute order.
 func extractMeta(head, name string) string {
 	lower := strings.ToLower(head)
@@ -701,7 +750,6 @@ func buildSEOTags(title, description, pageURL, lang, date, author string, isPost
 	fmt.Fprintf(&b, `<meta property="og:site_name" content="%s">`, siteName)
 	fmt.Fprintf(&b, `<meta property="og:locale" content="%s">`, ogLocale)
 	if description != "" {
-		fmt.Fprintf(&b, `<meta name="description" content="%s">`, htmlEsc(description))
 		fmt.Fprintf(&b, `<meta property="og:description" content="%s">`, htmlEsc(description))
 		fmt.Fprintf(&b, `<meta name="twitter:description" content="%s">`, htmlEsc(description))
 	}
