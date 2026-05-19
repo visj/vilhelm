@@ -102,3 +102,35 @@ The JavaScript in `layout.html` (or a post script) reads the `data-ref` attribut
 - `{{GLOBALCSS}}` — the hashed stylesheet `<link>` tag
 
 Do not put full `<html>`, `<head>`, or `<body>` tags in post files — only their contents.
+
+## Comments
+Comments are created as raw html and inserted from a database. See below for an example.
+
+```html
+<div class="comment" id="c-abc123">
+  <div class="comment-meta">
+    <span class="comment-name">Erik Lindqvist</span>
+    <time>2026-05-17</time>
+    <button class="reply-btn" type="button">Svara</button>
+  </div>
+  <p>En riktigt välskriven text. Jag kände igen mig i det du skriver om att ha goda avsikter utan att verkligen följa igenom med dem. Det är lätt att lura sig själv om man inte är vaksam.</p>
+  <div class="comment-replies">
+    <div class="comment" id="c-def456">
+      <div class="comment-meta">
+        <span class="comment-name">Anna Bergström</span>
+        <time>2026-05-18</time>
+        <button class="reply-btn" type="button">Svara</button>
+      </div>
+      <p>Instämmer helt! Och ändå gör vi om samma misstag varje år. Det verkar nästan vara en del av det mänskliga tillståndet.</p>
+    </div>
+  </div>
+</div>
+<div class="comment" id="c-ghi789">
+  <div class="comment-meta">
+    <span class="comment-name">Maria Söderberg</span>
+    <time>2026-05-18</time>
+    <button class="reply-btn" type="button">Svara</button>
+  </div>
+  <p>Det finns något befriande i att erkänna att man misslyckas med sina föresatser. Tack för texten — den kom lägligt.</p>
+</div>
+```
