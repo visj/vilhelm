@@ -156,7 +156,7 @@ func d1(endpoint, sql string, params []any) ([]map[string]any, error) {
 		Result []struct {
 			Results []map[string]any `json:"results"`
 		} `json:"result"`
-		Success bool `json:"success"`
+		Success bool                       `json:"success"`
 		Errors  []struct{ Message string } `json:"errors"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {

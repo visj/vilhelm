@@ -39,10 +39,7 @@ const (
 	certDir    = ".certs"
 	siteURL    = "https://www.vilhelm.se"
 	siteName   = "Vilhelm"
-	homeTitle  = "Vilhelms brokiga betraktelser"
 )
-
-// ── Post metadata ─────────────────────────────────────────────────────────────
 
 type Post struct {
 	Title       string
@@ -50,9 +47,9 @@ type Post struct {
 	Description string
 	Date        string
 	Tags        []string
-	Lang        string // "sv" or "en"
-	URL         string // e.g. "/om-brev" or "/en/on-letters"
-	DestPath    string // path of rendered file inside dist/
+	Lang        string
+	URL         string
+	DestPath    string
 }
 
 type postSource struct {
@@ -61,11 +58,18 @@ type postSource struct {
 	date string
 }
 
-// assetMap maps original URL paths to hashed URL paths for global assets.
-// e.g. "/css/style.css" → "/css/style.a3f9c1b2.css"
-var assetMap map[string]string
+// renderOpts allows overriding page metadata and output path when rendering a
+// file for a different destination than its own URL — used by renderHomeIndex
+// to show the latest post's body under the site's own title and canonical URL.
+type renderOpts struct {
+	next         *Post
+	destPath     string
+	canonicalURL string
+	title        string
+	description  string
+}
 
-// ── Entry point ───────────────────────────────────────────────────────────────
+var assetMap map[string]string
 
 func main() {
 	watch := flag.Bool("watch", false, "watch for changes and serve over HTTPS")
@@ -81,8 +85,6 @@ func main() {
 		serve(*port)
 	}
 }
-
-// ── Build ─────────────────────────────────────────────────────────────────────
 
 func build() error {
 	layout, err := os.ReadFile(layoutFile)
@@ -138,8 +140,6 @@ func renderContent(layout string) ([]Post, error) {
 	return renderPosts(layout)
 }
 
-// renderPosts walks views/posts/, sorts by date, injects next-post links, and
-// copies the newest post to dist/index.html.
 func renderPosts(layout string) ([]Post, error) {
 	var all []postSource
 	if err := walkViewDir(postsDir, "", func(path, src string) error {
@@ -163,7 +163,7 @@ func renderPosts(layout string) ([]Post, error) {
 		if i+1 < len(metas) {
 			next = &metas[i+1]
 		}
-		post, err := renderFile(s.path, s.src, layout, next)
+		post, err := renderFile(s.path, s.src, layout, renderOpts{next: next})
 		if err != nil {
 			return nil, err
 		}
@@ -171,30 +171,46 @@ func renderPosts(layout string) ([]Post, error) {
 	}
 
 	if len(posts) > 0 {
-		indexPath := filepath.Join(distDir, "index.html")
-		if posts[0].DestPath != indexPath {
-			if err := copyFile(posts[0].DestPath, indexPath); err != nil {
-				return nil, err
-			}
-			if err := overridePageTitle(indexPath, posts[0].Title, homeTitle); err != nil {
-				return nil, err
-			}
-			fmt.Printf("index: %s\n", posts[0].URL)
+		if err := renderHomeIndex(layout, all[0], metas); err != nil {
+			return nil, err
 		}
 	}
 	return posts, nil
 }
 
-// renderPages walks views/pages/ and renders each as a plain static page.
+// renderHomeIndex renders dist/index.html using the latest post's body with
+// metadata (title, description) from views/index.html.
+func renderHomeIndex(layout string, latest postSource, metas []Post) error {
+	src, err := os.ReadFile(filepath.Join(viewsDir, "index.html"))
+	if err != nil {
+		return fmt.Errorf("views/index.html required for home page: %w", err)
+	}
+	head := extractBetween(string(src), "<head>", "</head>")
+	title := extractBetween(head, "<title>", "</title>")
+	if title == "" {
+		return fmt.Errorf("views/index.html must have a <title>")
+	}
+	var next *Post
+	if len(metas) > 1 {
+		next = &metas[1]
+	}
+	_, err = renderFile(latest.path, latest.src, layout, renderOpts{
+		next:         next,
+		destPath:     filepath.Join(distDir, "index.html"),
+		canonicalURL: "/",
+		title:        title,
+		description:  extractMeta(head, "description"),
+	})
+	return err
+}
+
 func renderPages(layout string) error {
 	return walkViewDir(pagesDir, "", func(path, src string) error {
-		_, err := renderFile(path, src, layout, nil)
+		_, err := renderFile(path, src, layout, renderOpts{})
 		return err
 	})
 }
 
-// renderAuthors walks views/authors/, renders each bio page, and generates
-// the /skribenter index listing all authors.
 func renderAuthors(layout string) error {
 	type authorEntry struct {
 		Name string
@@ -203,7 +219,7 @@ func renderAuthors(layout string) error {
 	var authors []authorEntry
 
 	if err := walkViewDir(authorsDir, "skribenter", func(path, src string) error {
-		post, err := renderFile(path, src, layout, nil)
+		post, err := renderFile(path, src, layout, renderOpts{})
 		if err != nil {
 			return err
 		}
@@ -226,8 +242,6 @@ func renderAuthors(layout string) error {
 	return writePage(layout, "/skribenter/index.html", "<title>Skribenter</title>", b.String())
 }
 
-// walkViewDir walks a views sub-directory, copies non-HTML assets to dist
-// under distPrefix, and calls fn for each HTML file.
 func walkViewDir(dir, distPrefix string, fn func(path, src string) error) error {
 	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -256,7 +270,7 @@ func walkViewDir(dir, distPrefix string, fn func(path, src string) error) error 
 	})
 }
 
-func renderFile(path, src, layout string, next *Post) (Post, error) {
+func renderFile(path, src, layout string, opts renderOpts) (Post, error) {
 	head := extractBetween(src, "<head>", "</head>")
 	body := extractBetween(src, "<body>", "</body>")
 
@@ -274,16 +288,22 @@ func renderFile(path, src, layout string, next *Post) (Post, error) {
 		}
 	}
 
+	if opts.title != "" {
+		title = opts.title
+	}
+	if opts.description != "" {
+		description = opts.description
+	}
+
 	isPost := strings.HasPrefix(filepath.ToSlash(path), "views/posts/")
 	postURL := urlFromPath(path)
 	if isPost {
 		body += commentSection(path, postURL)
 	}
-	if next != nil {
-		body += fmt.Sprintf("\n<div class=\"post-nav\"><a href=\"%s\">%s →</a></div>", next.URL, next.Title)
+	if opts.next != nil {
+		body += fmt.Sprintf("\n<div class=\"post-nav\"><a href=\"%s\">%s →</a></div>", opts.next.URL, opts.next.Title)
 	}
 
-	// Per-view local assets: style.css and script.js next to the HTML file.
 	viewDir := filepath.Dir(path)
 	localCSS, localJS := "", ""
 	if cssURL, err := processViewAsset(filepath.Join(viewDir, "style.css"), postURL); err == nil {
@@ -296,7 +316,12 @@ func renderFile(path, src, layout string, next *Post) (Post, error) {
 	head = strings.ReplaceAll(head, "{{JS}}", localJS)
 	body = strings.ReplaceAll(body, "{{CSS}}", localCSS)
 	body = strings.ReplaceAll(body, "{{JS}}", localJS)
-	head += buildSEOTags(title, description, postURL, lang, date, author, isPost)
+
+	seoURL := postURL
+	if opts.canonicalURL != "" {
+		seoURL = opts.canonicalURL
+	}
+	head += buildSEOTags(title, description, seoURL, lang, date, author, isPost)
 
 	container := "container"
 	if extractMeta(head, "layout") == "wide" {
@@ -304,14 +329,11 @@ func renderFile(path, src, layout string, next *Post) (Post, error) {
 	}
 	articleJS := assetPath("/js/article.js")
 	scripts := `<script src="` + articleJS + `"></script>`
-	if isPost {
-		commentsJS := assetPath("/js/comments.js")
-		scripts += "\n<script src=\"" + commentsJS + "\"></script>"
-	}
-	wrapped := "<div class=\"" + container + "\">\n" + body + "\n</div>\n" + scripts
+	wrapped := "<div class=\"" + container + "\">\n" + body + "\n</div>"
 	out := strings.ReplaceAll(layout, "{{HEAD}}", head)
 	out = strings.ReplaceAll(out, "{{BODY}}", wrapped)
 	out = strings.ReplaceAll(out, "{{LANG}}", lang)
+	out = strings.ReplaceAll(out, "{{PAGEJS}}", scripts)
 	turnstileScript, turnstileWidget := "", ""
 	if os.Getenv("TURNSTILE_SECRET") != "" {
 		turnstileScript = `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`
@@ -321,7 +343,9 @@ func renderFile(path, src, layout string, next *Post) (Post, error) {
 	out = strings.ReplaceAll(out, "{{TURNSTILE_WIDGET}}", turnstileWidget)
 
 	var dest string
-	if postURL == "/" {
+	if opts.destPath != "" {
+		dest = opts.destPath
+	} else if postURL == "/" {
 		dest = filepath.Join(distDir, "index.html")
 	} else {
 		dest = filepath.Join(distDir, filepath.FromSlash(strings.TrimPrefix(postURL, "/")), "index.html")
@@ -392,10 +416,6 @@ func commentSection(path, postURL string) string {
 </section>`, slug, sitekeyAttr, commentsDiv, turnstileContainer)
 }
 
-// ── Topic / tag page generation ───────────────────────────────────────────────
-
-// ── Browse page ───────────────────────────────────────────────────────────────
-
 func generateBrowse(layout string, posts []Post) error {
 	if len(posts) == 0 {
 		return nil
@@ -428,8 +448,6 @@ func generateBrowse(layout string, posts []Post) error {
 	return writePage(layout, "/bladdra/index.html", "<title>Bläddra</title>", b.String())
 }
 
-// ── Topic / tag page generation ───────────────────────────────────────────────
-
 func generateTopics(layout string, posts []Post) error {
 	return generateTagPages(layout, posts, "/amnen", "Ämnen", "← Alla ämnen")
 }
@@ -456,7 +474,6 @@ func generateTagPages(layout string, posts []Post, base, indexTitle, backLabel s
 
 	slugs := sortedKeys(tagPosts)
 
-	// Tag index page
 	var b strings.Builder
 	b.WriteString("<h1>" + indexTitle + "</h1>\n<ul class=\"tag-list\">\n")
 	for _, slug := range slugs {
@@ -471,7 +488,6 @@ func generateTagPages(layout string, posts []Post, base, indexTitle, backLabel s
 		return err
 	}
 
-	// Per-tag pages
 	for _, slug := range slugs {
 		name := tagNames[slug]
 		ps := tagPosts[slug]
@@ -509,6 +525,7 @@ func writePage(layout, path, head, body string) error {
 	out := strings.ReplaceAll(layout, "{{HEAD}}", head)
 	out = strings.ReplaceAll(out, "{{BODY}}", wrapped)
 	out = strings.ReplaceAll(out, "{{LANG}}", "sv")
+	out = strings.ReplaceAll(out, "{{PAGEJS}}", "")
 	if !strings.HasSuffix(path, "/index.html") && strings.HasSuffix(path, ".html") {
 		path = strings.TrimSuffix(path, ".html") + "/index.html"
 	}
@@ -519,8 +536,6 @@ func writePage(layout, path, head, body string) error {
 	fmt.Printf("generated: %s\n", dest)
 	return os.WriteFile(dest, []byte(minifyHTML(out)), 0644)
 }
-
-// ── Metadata extraction ───────────────────────────────────────────────────────
 
 func extractBetween(s, open, close string) string {
 	start := strings.Index(s, open)
@@ -573,8 +588,6 @@ func extractAttr(tag, attr string) string {
 	return ""
 }
 
-// ── Path helpers ──────────────────────────────────────────────────────────────
-
 func langFromPath(path string) string {
 	// English posts live under views/posts/en/
 	rel, _ := filepath.Rel(postsDir, path)
@@ -626,8 +639,6 @@ func urlFromPath(path string) string {
 	return "/" + s
 }
 
-// ── String helpers ────────────────────────────────────────────────────────────
-
 func tagSlug(tag string) string {
 	s := strings.ToLower(strings.TrimSpace(tag))
 	s = strings.NewReplacer("ä", "a", "ö", "o", "å", "a", " ", "-").Replace(s)
@@ -659,25 +670,6 @@ func sortedKeys(m map[string][]Post) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// ── SEO ───────────────────────────────────────────────────────────────────────
-
-// overridePageTitle replaces the <title>, og:title, and twitter:title in an
-// already-rendered HTML file. Used to give the homepage a stable site title
-// while the copied post page keeps its original title.
-func overridePageTitle(path, oldTitle, newTitle string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	html := string(data)
-	html = strings.Replace(html, "<title>"+oldTitle+"</title>", "<title>"+newTitle+"</title>", 1)
-	esc := htmlEsc(oldTitle)
-	newEsc := htmlEsc(newTitle)
-	html = strings.Replace(html, `og:title" content="`+esc+`"`, `og:title" content="`+newEsc+`"`, 1)
-	html = strings.Replace(html, `twitter:title" content="`+esc+`"`, `twitter:title" content="`+newEsc+`"`, 1)
-	return os.WriteFile(path, []byte(html), 0644)
 }
 
 func htmlEsc(s string) string {
@@ -830,10 +822,6 @@ func generateSitemap(posts []Post) error {
 	return os.WriteFile(filepath.Join(distDir, "sitemap.xml"), out, 0644)
 }
 
-// ── Asset pipeline ────────────────────────────────────────────────────────────
-
-// assetPath returns the hashed URL for a global asset, falling back to the
-// original path if the asset was not found during the build.
 func assetPath(original string) string {
 	if p, ok := assetMap[original]; ok {
 		return p
@@ -846,12 +834,9 @@ func contentHash(data []byte) string {
 	return hex.EncodeToString(sum[:])[:8]
 }
 
-// buildGlobalAssetMap minifies + hashes the global CSS and the Bun-minified
-// JS files that Go injects directly into every page.
 func buildGlobalAssetMap() (map[string]string, error) {
 	am := make(map[string]string)
 
-	// CSS: minify with the Go minifier, write hashed file, remove original.
 	cssData, err := os.ReadFile(filepath.Join(assetsDir, "css", "style.css"))
 	if err != nil {
 		return nil, err
@@ -865,9 +850,8 @@ func buildGlobalAssetMap() (map[string]string, error) {
 	os.Remove(filepath.Join(distDir, "css", "style.css"))
 	am["/css/style.css"] = "/css/" + hashedCSS
 
-	// JS: Bun already minified these into assets/js/; copyDir put them in
-	// dist/js/. Hash and rename them there.
-	for _, name := range []string{"article.js", "comments.js", "nav.js"} {
+	// JS files are pre-minified by Bun into assets/js/; copyDir put them in dist/js/.
+	for _, name := range []string{"article.js", "nav.js"} {
 		distPath := filepath.Join(distDir, "js", name)
 		data, err := os.ReadFile(distPath)
 		if err != nil {
@@ -890,9 +874,9 @@ func buildGlobalAssetMap() (map[string]string, error) {
 	return am, nil
 }
 
-// processViewAsset minifies and hashes a per-view CSS or JS file, writes the
-// result to the page's directory in dist/, and returns its URL. Returns a
-// non-nil error (and empty string) when the file does not exist.
+// processViewAsset minifies and hashes a per-view CSS or JS file and writes
+// it to the page directory in dist/. Returns an error when the file does not
+// exist, which callers use to skip optional assets.
 func processViewAsset(srcPath, pageURL string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(srcPath))
 	base := strings.TrimSuffix(filepath.Base(srcPath), filepath.Ext(srcPath))
@@ -928,8 +912,6 @@ func processViewAsset(srcPath, pageURL string) (string, error) {
 	return pageURL + "/" + hashedName, nil
 }
 
-// minifyWithBun calls `bun build --minify` on a single file and returns the
-// minified bytes.
 func minifyWithBun(srcPath string) ([]byte, error) {
 	abs, err := filepath.Abs(srcPath)
 	if err != nil {
@@ -950,7 +932,6 @@ func minifyWithBun(srcPath string) ([]byte, error) {
 // minifyCSS strips comments and collapses whitespace around structural
 // characters. Safe for CSS without url() or @import references to local files.
 func minifyCSS(s string) string {
-	// Strip /* ... */ comments.
 	var b strings.Builder
 	for {
 		start := strings.Index(s, "/*")
@@ -968,7 +949,6 @@ func minifyCSS(s string) string {
 	}
 	s = b.String()
 
-	// Collapse all whitespace runs to a single space.
 	var buf []byte
 	prevSpace := false
 	for i := 0; i < len(s); i++ {
@@ -985,7 +965,6 @@ func minifyCSS(s string) string {
 	}
 	s = string(buf)
 
-	// Remove spaces around structural characters.
 	for _, pair := range [][2]string{
 		{" {", "{"}, {"{ ", "{"},
 		{" }", "}"}, {"} ", "}"},
@@ -1112,8 +1091,6 @@ func collapseSpace(s string) string {
 	return string(buf)
 }
 
-// ── Assets ────────────────────────────────────────────────────────────────────
-
 func copyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -1142,8 +1119,6 @@ func copyFile(src, dst string) error {
 	_, err = io.Copy(out, in)
 	return err
 }
-
-// ── Watcher ───────────────────────────────────────────────────────────────────
 
 func watchAndRebuild() {
 	var lastMod time.Time
@@ -1177,8 +1152,6 @@ func latestMod(since time.Time) (time.Time, bool) {
 	return latest, latest.After(since)
 }
 
-// ── HTTPS server ──────────────────────────────────────────────────────────────
-
 func serve(port int) {
 	cert, isNew, err := loadOrCreateCert()
 	if err != nil {
@@ -1201,8 +1174,6 @@ func serve(port int) {
 		os.Exit(1)
 	}
 }
-
-// ── TLS cert generation ───────────────────────────────────────────────────────
 
 func loadOrCreateCert() (tls.Certificate, bool, error) {
 	certPath := filepath.Join(certDir, "server.crt")
