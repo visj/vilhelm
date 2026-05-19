@@ -701,6 +701,7 @@ func buildSEOTags(title, description, pageURL, lang, date, author string, isPost
 	fmt.Fprintf(&b, `<meta property="og:site_name" content="%s">`, siteName)
 	fmt.Fprintf(&b, `<meta property="og:locale" content="%s">`, ogLocale)
 	if description != "" {
+		fmt.Fprintf(&b, `<meta name="description" content="%s">`, htmlEsc(description))
 		fmt.Fprintf(&b, `<meta property="og:description" content="%s">`, htmlEsc(description))
 		fmt.Fprintf(&b, `<meta name="twitter:description" content="%s">`, htmlEsc(description))
 	}
