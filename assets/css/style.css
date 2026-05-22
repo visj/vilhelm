@@ -6,7 +6,7 @@ body {
     font-family: Palatino Linotype, Book Antiqua, Palatino, Georgia, serif;
     font-size: 1rem;
     line-height: 1.8;
-    color: #4c4c4c;
+    color: #222;
     background: #fffffc;
     margin: 0;
     padding: 0;
@@ -170,6 +170,21 @@ h4 {
     font-weight: normal;
 }
 
+h1 s, h2 s, h3 s, h4 s {
+    text-decoration: none;
+    position: relative;
+}
+
+h1 s::after, h2 s::after, h3 s::after, h4 s::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    background: currentColor;
+}
+
 /* ── Anchor links (article pages only) ───────────────────────────────────── */
 
 .container h2, .container h3, .container h4 {
@@ -268,7 +283,7 @@ blockquote, .indent {
     margin: 1rem 0;
     font-size: 0.9rem;
     padding: 0 0 0 1.5rem;
-    color: #444;
+    color: #222;
 }
 
 blockquote {
@@ -359,16 +374,19 @@ pre code {
     margin-top: 3rem;
     padding-top: 1.5rem;
     border-top: 1px solid #e5e5e5;
-    font-size: 0.88rem;
+    font-size: 1.05rem;
 }
 
 .post-nav a {
-    color: #888;
+    color: #1a1a1a;
     text-decoration: none;
+    font-family: Palatino Linotype, Book Antiqua, Palatino, Georgia, serif;
 }
 
 .post-nav a:hover {
-    color: #1a1a1a;
+    text-decoration: underline;
+    text-decoration-color: #aaa;
+    text-underline-offset: 3px;
 }
 
 /* ── Forms ───────────────────────────────────────────────────────────────── */

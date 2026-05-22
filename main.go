@@ -50,6 +50,7 @@ type Post struct {
 	Lang        string
 	URL         string
 	DestPath    string
+	Draft       bool
 }
 
 type postSource struct {
@@ -75,7 +76,7 @@ func main() {
 	port := flag.Int("port", 8443, "HTTPS port for dev server")
 	flag.Parse()
 
-	if err := build(); err != nil {
+	if err := build(*watch); err != nil {
 		fmt.Fprintln(os.Stderr, "build error:", err)
 		os.Exit(1)
 	}
@@ -85,7 +86,7 @@ func main() {
 	}
 }
 
-func build() error {
+func build(debug bool) error {
 	layout, err := os.ReadFile(layoutFile)
 	if err != nil {
 		return fmt.Errorf("reading layout.html: %w", err)
@@ -116,7 +117,7 @@ func build() error {
 	layoutStr := strings.ReplaceAll(string(layout), "{{GLOBALCSS}}", cssLink)
 	layoutStr = strings.ReplaceAll(layoutStr, "{{NAVJS}}", navJS)
 
-	posts, err := renderContent(layoutStr)
+	posts, err := renderContent(layoutStr, debug)
 	if err != nil {
 		return err
 	}
@@ -129,20 +130,23 @@ func build() error {
 	return generateSitemap(posts)
 }
 
-func renderContent(layout string) ([]Post, error) {
+func renderContent(layout string, debug bool) ([]Post, error) {
 	if err := renderPages(layout); err != nil {
 		return nil, err
 	}
 	if err := renderAuthors(layout); err != nil {
 		return nil, err
 	}
-	return renderPosts(layout)
+	return renderPosts(layout, debug)
 }
 
-func renderPosts(layout string) ([]Post, error) {
+func renderPosts(layout string, debug bool) ([]Post, error) {
 	var all []postSource
 	if err := walkViewDir(postsDir, "", func(path, src string) error {
 		head := extractBetween(src, "<head>", "</head>")
+		if !debug && strings.EqualFold(extractMeta(head, "draft"), "true") {
+			return nil
+		}
 		all = append(all, postSource{path: path, src: src, date: extractMeta(head, "date")})
 		return nil
 	}); err != nil {
@@ -294,11 +298,11 @@ func renderFile(path, src, layout string, opts renderOpts) (Post, error) {
 
 	isPost := strings.HasPrefix(filepath.ToSlash(path), "views/posts/")
 	postURL := urlFromPath(path)
-	if isPost {
-		body += commentSection(path, postURL)
-	}
 	if opts.next != nil {
 		body += fmt.Sprintf("\n<div class=\"post-nav\"><a href=\"%s\">%s →</a></div>", opts.next.URL, opts.next.Title)
+	}
+	if isPost {
+		body += commentSection(path, postURL)
 	}
 
 	viewDir := filepath.Dir(path)
@@ -319,6 +323,7 @@ func renderFile(path, src, layout string, opts renderOpts) (Post, error) {
 		seoURL = opts.canonicalURL
 	}
 	head += buildSEOTags(title, description, seoURL, lang, date, author, isPost)
+	head = cleanTitleTag(head)
 
 	container := "container"
 	if extractMeta(head, "layout") == "wide" {
@@ -534,6 +539,35 @@ func writePage(layout, path, head, body string) error {
 	return os.WriteFile(dest, []byte(minifyHTML(out)), 0644)
 }
 
+func cleanTitleTag(head string) string {
+	lower := strings.ToLower(head)
+	start := strings.Index(lower, "<title>")
+	end := strings.Index(lower, "</title>")
+	if start == -1 || end == -1 {
+		return head
+	}
+	inner := head[start+len("<title>") : end]
+	return head[:start] + "<title>" + stripHTML(inner) + "</title>" + head[end+len("</title>"):]
+}
+
+func stripHTML(s string) string {
+	var b strings.Builder
+	for {
+		start := strings.Index(s, "<")
+		if start == -1 {
+			b.WriteString(s)
+			break
+		}
+		b.WriteString(s[:start])
+		end := strings.Index(s[start:], ">")
+		if end == -1 {
+			break
+		}
+		s = s[start+end+1:]
+	}
+	return b.String()
+}
+
 func extractBetween(s, open, close string) string {
 	start := strings.Index(s, open)
 	if start == -1 {
@@ -731,6 +765,7 @@ func htmlEsc(s string) string {
 }
 
 func buildSEOTags(title, description, pageURL, lang, date, author string, isPost bool) string {
+	title = stripHTML(title)
 	absURL := siteURL + pageURL
 
 	ogLocale := "sv_SE"
@@ -1179,7 +1214,7 @@ func watchAndRebuild() {
 		}
 		lastMod = latest
 		fmt.Println("change detected, rebuilding...")
-		if err := build(); err != nil {
+		if err := build(true); err != nil {
 			fmt.Fprintln(os.Stderr, "build error:", err)
 		}
 	}
