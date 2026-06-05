@@ -84,6 +84,8 @@ export async function onRequestPost({ request, env }) {
   return ok();
 }
 
+function uid() { return crypto.randomUUID().slice(0, 8) }
+
 function ok() { return json({ ok: true }); }
 function err(s, msg) { return json({ error: msg }, s); }
 function json(body, s = 200) {
