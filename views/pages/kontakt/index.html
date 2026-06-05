@@ -1,8 +1,8 @@
 <head>
     <title>Kontakt</title>
     <meta name="layout" content="wide">
-    {{TURNSTILE_SCRIPT}}
 </head>
+
 <body>
     <h1>Kontakt</h1>
     <p>Skicka ett meddelande här så hör jag av mig.</p>
@@ -18,40 +18,65 @@
         </div>
         <div class="form-field">
             <label for="cf-message">Meddelande</label>
-            <textarea id="cf-message" name="message" rows="6" required></textarea>
+            <textarea id="cf-message" name="message" rows="6"
+                required></textarea>
         </div>
-        {{TURNSTILE_WIDGET}}
-        <button type="submit">Skicka</button>
+        <button type="submit" id="cf-submit-btn" disabled>Skicka</button>
         <p class="form-status" id="cf-status"></p>
     </form>
 
     <script>
-    document.getElementById('contact-form').addEventListener('submit', async function(e) {
-        e.preventDefault()
-        const btn = this.querySelector('button[type=submit]')
-        const status = document.getElementById('cf-status')
-        btn.disabled = true
-        status.textContent = ''
-        try {
-            const turnstileInput = this.querySelector('[name="cf-turnstile-response"]')
-            const r = await fetch('/api/contact', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: this.name.value,
-                    email: this.email.value,
-                    message: this.message.value,
-                    turnstileToken: turnstileInput ? turnstileInput.value : '',
-                }),
-            })
-            status.textContent = r.ok
-                ? 'Tack! Jag återkommer så snart jag kan.'
-                : 'Något gick fel — försök igen eller mejla direkt.'
-            if (r.ok) { this.reset() }
-        } catch {
-            status.textContent = 'Kunde inte skicka. Kontrollera anslutningen.'
-        }
-        btn.disabled = false
-    })
+        let activeToken = '';
+
+        // Fetch the signed time-locked token as soon as the page finishes rendering
+        document.addEventListener('DOMContentLoaded', async () => {
+            const btn = document.getElementById('cf-submit-btn');
+            const status = document.getElementById('cf-status');
+
+            try {
+                const r = await fetch('/api/contact');
+                const data = await r.json();
+                if (data.token) {
+                    activeToken = data.token;
+                    btn.disabled = false; // Enable form now that token is loaded
+                } else {
+                    status.textContent = 'Kunde inte ladda säkerhetsmodul.';
+                }
+            } catch {
+                status.textContent = 'Nätverksfel. Sidan kunde inte initieras korrekt.';
+            }
+        });
+
+        document.getElementById('contact-form').addEventListener('submit', async function (e) {
+            e.preventDefault()
+            const btn = this.querySelector('button[type=submit]')
+            const status = document.getElementById('cf-status')
+            btn.disabled = true
+            status.textContent = ''
+            try {
+                const r = await fetch('/api/contact', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: this.name.value,
+                        email: this.email.value,
+                        message: this.message.value,
+                        token: activeToken, // Transmit the signed cryptographic token string
+                    }),
+                })
+
+                if (r.ok) {
+                    status.textContent = 'Tack! Jag återkommer så snart jag kan.'
+                    this.reset()
+                    activeToken = ''; // Reset token upon success
+                } else {
+                    const data = await r.json();
+                    status.textContent = data.error || 'Något gick fel — försök igen eller mejla direkt.'
+                }
+            } catch {
+                status.textContent = 'Kunde inte skicka. Kontrollera anslutningen.'
+            }
+            btn.disabled = (activeToken === ''); // Keep disabled if token was cleared or failed
+        })
     </script>
 </body>

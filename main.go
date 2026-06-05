@@ -336,13 +336,6 @@ func renderFile(path, src, layout string, opts renderOpts) (Post, error) {
 	out = strings.ReplaceAll(out, "{{BODY}}", wrapped)
 	out = strings.ReplaceAll(out, "{{LANG}}", lang)
 	out = strings.ReplaceAll(out, "{{PAGEJS}}", scripts)
-	turnstileScript, turnstileWidget := "", ""
-	if os.Getenv("TURNSTILE_SECRET") != "" {
-		turnstileScript = `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`
-		turnstileWidget = `<div class="cf-turnstile" data-sitekey="0x4AAAAAADQiKUKHRY-f0Np2" data-theme="light"></div>`
-	}
-	out = strings.ReplaceAll(out, "{{TURNSTILE_SCRIPT}}", turnstileScript)
-	out = strings.ReplaceAll(out, "{{TURNSTILE_WIDGET}}", turnstileWidget)
 
 	var dest string
 	if opts.destPath != "" {
@@ -383,11 +376,6 @@ func commentSection(path, postURL string) string {
 	}
 
 	sitekeyAttr := ""
-	turnstileContainer := ""
-	if os.Getenv("TURNSTILE_SECRET") != "" {
-		sitekeyAttr = ` data-sitekey="0x4AAAAAADQiKUKHRY-f0Np2"`
-		turnstileContainer = "\n<div id=\"cf-turnstile-container\"></div>"
-	}
 
 	return fmt.Sprintf(`<section class="comments" data-post="%s"%s>
 %s<button type="button" class="open-comment-btn">Lämna en kommentar</button>
@@ -405,7 +393,7 @@ func commentSection(path, postURL string) string {
 <input type="hidden" name="parent_id" value="">
 <div class="form-field"><label for="c-name">Namn</label><input id="c-name" type="text" name="name" required autocomplete="name"></div>
 <div class="form-field"><label for="c-email">E-post</label><input id="c-email" type="email" name="email" required autocomplete="email"></div>
-<div class="form-field"><label for="c-text">Kommentar</label><textarea id="c-text" name="comment" rows="4" required></textarea></div>%s
+<div class="form-field"><label for="c-text">Kommentar</label><textarea id="c-text" name="comment" rows="4" required></textarea></div>
 <button type="submit">Skicka kommentar</button>
 <p class="form-status"></p>
 </form>
@@ -415,7 +403,7 @@ func commentSection(path, postURL string) string {
 <button type="button" class="modal-success-close">Stäng</button>
 </div>
 </div>
-</section>`, slug, sitekeyAttr, commentsDiv, turnstileContainer)
+</section>`, slug, sitekeyAttr, commentsDiv)
 }
 
 func generateBrowse(layout string, posts []Post) error {
