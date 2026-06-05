@@ -9,13 +9,22 @@ async function getCryptoKey(secret) {
   );
 }
 
-// 1. GET: Automatically handles token generation upon contact page load
 export async function onRequestGet({ request, env }) {
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
   const timestamp = Date.now();
-  const payload = `${ip}:${timestamp}`;
 
-  const key = await getCryptoKey(env.JWT_SECRET);
+  // Create a cryptographically secure random 8-byte nonce
+  const randomBuffer = new Uint8Array(8);
+  crypto.getRandomValues(randomBuffer);
+  const nonceHex = Array.from(randomBuffer)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  // Append the nonce to the payload. 
+  // Even if timestamp and IP match perfectly, the payload is now unique.
+  const payload = `${ip}:${timestamp}:${nonceHex}`;
+
+  const key = await getCryptoKey(env.JWT_SECRET || env.TURNSTILE_SECRET);
   const signatureBuffer = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
 
   const signature = Array.from(new Uint8Array(signatureBuffer))
@@ -42,7 +51,16 @@ export async function onRequestPost({ request, env }) {
   try {
     // 1. Decode the outer token wrap
     const decoded = atob(token);
-    const [ip, timestampStr, signatureHex] = decoded.split(/[:.]/);
+
+    // Split by both colons and periods: [ip, timestampStr, nonceHex, signatureHex]
+    const parts = decoded.split(/[:.]/);
+    if (parts.length < 4) return err(403, 'Felaktigt tokenformat');
+
+    const ip = parts[0];
+    const timestampStr = parts[1];
+    const nonceHex = parts[2];
+    const signatureHex = parts[3];
+
     const timestamp = parseInt(timestampStr, 10);
     const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
 
@@ -51,8 +69,8 @@ export async function onRequestPost({ request, env }) {
       signatureHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16))
     );
 
-    // 3. Verify the signature cryptographically using native Web Crypto
-    const payloadBytes = new TextEncoder().encode(`${ip}:${timestampStr}`);
+    // 3. Reconstruct the precise payload used during creation
+    const payloadBytes = new TextEncoder().encode(`${ip}:${timestampStr}:${nonceHex}`);
     const key = await getCryptoKey(env.JWT_SECRET || env.TURNSTILE_SECRET);
 
     const isValid = await crypto.subtle.verify(
@@ -67,8 +85,8 @@ export async function onRequestPost({ request, env }) {
 
     // 4. Enforce 8 seconds time lock
     const elapsed = Date.now() - timestamp;
-    if (elapsed < 8000) return err(403, 'Du skickade meddelandet för snabbt (bot-skydd).');
-    if (elapsed > 900000) return err(403, 'Säkerhetstoken har löpt ut. Ladda om sidan och försök igen.');
+    if (elapsed < 6000) return err(403, 'Du interagerade för snabbt. Vänta några sekunder.');
+    if (elapsed > 900000) return err(403, 'Token har löpt ut. Stäng eller ladda om sidan och försök igen.');
 
   } catch (e) {
     return err(403, `Verifieringen misslyckades: ${e.message}`);

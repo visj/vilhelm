@@ -201,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (submitBtn) submitBtn.disabled = true;
 
     // Fetch the signed time-locked token from the API
-    fetch('/api/comment')
+    fetch(`/api/comment?_cb=${Date.now()}`)
       .then(r => r.json())
       .then(data => {
         if (data.token) {
