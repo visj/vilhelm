@@ -65,7 +65,7 @@ export async function onRequestPost({ request, env }) {
     if (!isValid) return err(403, 'Ogiltig verifieringstoken');
 
     const elapsed = Date.now() - parseInt(timestampStr, 10);
-    if (elapsed < 6000) return err(403, 'För snabb interaktion.');
+    if (elapsed < 6000) return err(403, 'För hastigt och lustigt skrivet.');
     if (elapsed > 900000) return err(403, 'Token har löpt ut.');
 
   } catch (e) {
