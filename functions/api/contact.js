@@ -40,28 +40,38 @@ export async function onRequestPost({ request, env }) {
   if (!token) return err(403, 'Verifiering saknas');
 
   try {
+    // 1. Decode the outer token wrap
     const decoded = atob(token);
-    const [ip, timestampStr, signature] = decoded.split(/[:.]/);
+    const [ip, timestampStr, signatureHex] = decoded.split(/[:.]/);
     const timestamp = parseInt(timestampStr, 10);
     const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
 
-    const payload = `${ip}:${timestampStr}`;
-    const key = await getCryptoKey(env.JWT_SECRET);
-    const expectedBuffer = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
-    const expectedSignature = Array.from(new Uint8Array(expectedBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+    // 2. Convert the hex signature string back into a Uint8Array buffer
+    const signatureBytes = new Uint8Array(
+      signatureHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16))
+    );
 
-    if (signature !== expectedSignature) return err(403, 'Ogiltig verifieringstoken');
+    // 3. Verify the signature cryptographically using native Web Crypto
+    const payloadBytes = new TextEncoder().encode(`${ip}:${timestampStr}`);
+    const key = await getCryptoKey(env.JWT_SECRET || env.TURNSTILE_SECRET);
+
+    const isValid = await crypto.subtle.verify(
+      'HMAC',
+      key,
+      signatureBytes,
+      payloadBytes
+    );
+
+    if (!isValid) return err(403, 'Ogiltig verifieringstoken');
     if (ip !== clientIp) return err(403, 'IP-adressen matchar inte');
 
-    // Enforce 8 seconds for filling out form fields
+    // 4. Enforce 8 seconds time lock
     const elapsed = Date.now() - timestamp;
     if (elapsed < 8000) return err(403, 'Du skickade meddelandet för snabbt (bot-skydd).');
     if (elapsed > 900000) return err(403, 'Säkerhetstoken har löpt ut. Ladda om sidan och försök igen.');
 
   } catch (e) {
-    return err(403, 'Verifieringen misslyckades.');
+    return err(403, `Verifieringen misslyckades: ${e.message}`);
   }
 
   await env.DB.prepare(
