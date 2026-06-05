@@ -31,7 +31,7 @@ export async function onRequestGet({ request, env }) {
 
   // Encode the entire structure
   const token = btoa(`${payload}|#|${signatureHex}`);
-  return json({ token });
+  return json({ token, timestamp, randomBuffer, nonceHex, ip, key: env.JWT_SECRET.length > 10 });
 }
 
 export async function onRequestPost({ request, env }) {
@@ -66,7 +66,7 @@ export async function onRequestPost({ request, env }) {
     const payloadBytes = new TextEncoder().encode(payload); // Use the raw payload string
     const signatureBytes = new Uint8Array(signatureHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
 
-    const key = await getCryptoKey(env.JWT_SECRET || env.TURNSTILE_SECRET);
+    const key = await getCryptoKey(env.JWT_SECRET);
     const isValid = await crypto.subtle.verify('HMAC', key, signatureBytes, payloadBytes);
 
     if (!isValid) return err(403, 'Ogiltig verifieringstoken');
