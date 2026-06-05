@@ -13,8 +13,9 @@ async function getCryptoKey(secret) {
 // 1. GET: Generate the token
 export async function onRequestGet({ request, env }) {
   const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+  const key = await getCryptoKey(env.JWT_SECRET);
   const timestamp = Date.now().toString();
-  
+
   const randomBuffer = new Uint8Array(8);
   crypto.getRandomValues(randomBuffer);
   const nonceHex = Array.from(randomBuffer).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -22,7 +23,6 @@ export async function onRequestGet({ request, env }) {
   // Use the robust delimiter |#|
   const payload = `${ip}|#|${timestamp}|#|${nonceHex}`;
 
-  const key = await getCryptoKey(env.JWT_SECRET);
   const signatureBuffer = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
 
   const signatureHex = Array.from(new Uint8Array(signatureBuffer))
@@ -34,7 +34,6 @@ export async function onRequestGet({ request, env }) {
   return json({ token });
 }
 
-// 2. POST: Validate the token
 export async function onRequestPost({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return err(400, 'Ogiltig JSON'); }
@@ -46,21 +45,27 @@ export async function onRequestPost({ request, env }) {
 
   try {
     const decoded = atob(token);
-    
-    // Split using the robust, non-colliding delimiter
-    const parts = decoded.split('|#|');
-    if (parts.length !== 4) return err(403, 'Felaktigt tokenformat');
 
-    const [ip, timestampStr, nonceHex, signatureHex] = parts;
+    // 1. Split the top level: [payload, signatureHex]
+    const topLevelParts = decoded.split('|#|');
+    if (topLevelParts.length !== 2) return err(403, 'Felaktigt tokenformat (top)');
+
+    const [payload, signatureHex] = topLevelParts;
+
+    // 2. Split the payload: [ip, timestamp, nonce]
+    const payloadParts = payload.split('|#|');
+    if (payloadParts.length !== 3) return err(403, 'Felaktigt tokenformat (payload)');
+
+    const [ip, timestampStr, nonceHex] = payloadParts;
     const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
 
-    // Verify IP immediately
+    // Verify IP
     if (ip !== clientIp) return err(403, 'IP-adressen matchar inte');
 
     // Cryptographic validation
-    const payloadBytes = new TextEncoder().encode(`${ip}|#|${timestampStr}|#|${nonceHex}`);
+    const payloadBytes = new TextEncoder().encode(payload); // Use the raw payload string
     const signatureBytes = new Uint8Array(signatureHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-    
+
     const key = await getCryptoKey(env.JWT_SECRET || env.TURNSTILE_SECRET);
     const isValid = await crypto.subtle.verify('HMAC', key, signatureBytes, payloadBytes);
 
@@ -74,8 +79,10 @@ export async function onRequestPost({ request, env }) {
   } catch (e) {
     return err(403, `Verifieringsfel: ${e.message}`);
   }
-
-  // Insert logic here...
+  await env.DB.prepare(
+    'INSERT INTO comments (id, parent_id, post, name, email, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id.trim(), parent_id.trim(), post.trim(), name.trim(), email.trim(), comment.trim(), new Date().toISOString()).run();
+  
   return ok();
 }
 
@@ -83,8 +90,8 @@ export async function onRequestPost({ request, env }) {
 function ok() { return json({ ok: true }); }
 function err(s, msg) { return json({ error: msg }, s); }
 function json(body, s = 200) {
-  return new Response(JSON.stringify(body), { 
-    status: s, 
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } 
+  return new Response(JSON.stringify(body), {
+    status: s,
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
   });
 }
