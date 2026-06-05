@@ -38,11 +38,11 @@ export async function onRequestPost({ request, env }) {
   let body;
   try { body = await request.json(); } catch { return err(400, 'Ogiltig JSON'); }
 
-  const { id, post, name, email, comment, token } = body;
-  if (!id || !post || !name || !email || !comment || !token) {
-    return err(400, 'Saknade fält eller token');
+  const { id = '', parent_id = '', post = '', name = '', email = '', comment = '', token = '' } = body;
+  if (!id.trim() || !post.trim() || !name.trim() || !email.trim() || !comment.trim()) {
+    return err(400, 'Ogiltiga fält');
   }
-
+  
   try {
     const decoded = atob(token);
 
