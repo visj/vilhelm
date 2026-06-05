@@ -102,5 +102,12 @@ export async function onRequestPost({ request, env }) {
 function ok() { return json({ ok: true }); }
 function err(s, msg) { return json({ error: msg }, s); }
 function json(body, s = 200) {
-  return new Response(JSON.stringify(body), { status: s, headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify(body), {
+    status: s, headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  });
 }

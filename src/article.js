@@ -262,7 +262,7 @@ function closeModal() {
 
     const id = 'c-' + Math.random().toString(36).slice(2, 8);
 
-    fetch('/api/comment', {
+    fetch(`/api/comment?_cb=${Date.now()}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

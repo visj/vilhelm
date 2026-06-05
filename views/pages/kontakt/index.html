@@ -34,7 +34,7 @@
             const status = document.getElementById('cf-status');
 
             try {
-                const r = await fetch('/api/contact');
+                const r = await fetch(`/api/contact?_cb=${Date.now()}`);
                 const data = await r.json();
                 if (data.token) {
                     activeToken = data.token;
@@ -54,7 +54,7 @@
             btn.disabled = true
             status.textContent = ''
             try {
-                const r = await fetch(`/api/comment?_cb=${Date.now()}`, {
+                const r = await fetch(`/api/contact?_cb=${Date.now()}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
