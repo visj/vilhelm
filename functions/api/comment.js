@@ -31,7 +31,7 @@ export async function onRequestGet({ request, env }) {
 
   // Encode the entire structure
   const token = btoa(`${payload}|#|${signatureHex}`);
-  return json({ token, timestamp, randomBuffer, nonceHex, ip, key: env.JWT_SECRET.length > 10 });
+  return json({ token });
 }
 
 export async function onRequestPost({ request, env }) {
@@ -46,24 +46,17 @@ export async function onRequestPost({ request, env }) {
   try {
     const decoded = atob(token);
 
-    // 1. Split the top level: [payload, signatureHex]
-    const topLevelParts = decoded.split('|#|');
-    if (topLevelParts.length !== 2) return err(403, 'Felaktigt tokenformat (top)');
+    const payloadParts = decoded.split('|#|');
+    if (payloadParts.length !== 4) return err(403, 'Felaktigt tokenformat');
 
-    const [payload, signatureHex] = topLevelParts;
-
-    // 2. Split the payload: [ip, timestamp, nonce]
-    const payloadParts = payload.split('|#|');
-    if (payloadParts.length !== 3) return err(403, 'Felaktigt tokenformat (payload)');
-
-    const [ip, timestampStr, nonceHex] = payloadParts;
+    const [ip, timestampStr, nonceHex, signatureHex] = payloadParts;
     const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
 
-    // Verify IP
     if (ip !== clientIp) return err(403, 'IP-adressen matchar inte');
 
-    // Cryptographic validation
-    const payloadBytes = new TextEncoder().encode(payload); // Use the raw payload string
+    const reconstructedPayload = `${ip}|#|${timestampStr}|#|${nonceHex}`;
+
+    const payloadBytes = new TextEncoder().encode(reconstructedPayload); // Use the raw payload string
     const signatureBytes = new Uint8Array(signatureHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
 
     const key = await getCryptoKey(env.JWT_SECRET);
@@ -71,7 +64,6 @@ export async function onRequestPost({ request, env }) {
 
     if (!isValid) return err(403, 'Ogiltig verifieringstoken');
 
-    // Time lock check
     const elapsed = Date.now() - parseInt(timestampStr, 10);
     if (elapsed < 6000) return err(403, 'För snabb interaktion.');
     if (elapsed > 900000) return err(403, 'Token har löpt ut.');
@@ -82,7 +74,7 @@ export async function onRequestPost({ request, env }) {
   await env.DB.prepare(
     'INSERT INTO comments (id, parent_id, post, name, email, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
   ).bind(id.trim(), parent_id.trim(), post.trim(), name.trim(), email.trim(), comment.trim(), new Date().toISOString()).run();
-  
+
   return ok();
 }
 
@@ -92,6 +84,11 @@ function err(s, msg) { return json({ error: msg }, s); }
 function json(body, s = 200) {
   return new Response(JSON.stringify(body), {
     status: s,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
   });
 }
