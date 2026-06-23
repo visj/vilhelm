@@ -281,13 +281,13 @@ em {
 
 blockquote, .indent {
     margin: 1rem 0;
-    font-size: 0.9rem;
     padding: 0 0 0 1.5rem;
-    color: #222;
 }
 
 blockquote {
     border-left: 3px solid #999;
+    font-size: 0.9rem;
+    color: #222;
 }
 
 blockquote p:last-child {
