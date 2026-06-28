@@ -935,3 +935,125 @@ ol.references li a {
     margin: 0;
     line-height: 1.5;
 }
+
+/* ─── Lazy YouTube Embed ─────────────────────────────────── */
+ 
+  .yt-embed {
+    position: relative;
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+ 
+  /* Thumbnail */
+  .yt-embed__thumb {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease, filter 0.3s ease;
+  }
+ 
+  .yt-embed:hover .yt-embed__thumb {
+    transform: scale(1.02);
+    filter: brightness(0.75);
+  }
+ 
+  /* Dark gradient overlay at the bottom */
+  .yt-embed__gradient {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to top,
+      rgba(0, 0, 0, 0.55) 0%,
+      transparent 45%
+    );
+    pointer-events: none;
+  }
+ 
+  /* Play button */
+  .yt-embed__play {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(1);
+    width: 68px;
+    height: 48px;
+    background: #ff0000;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease, background 0.15s ease;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  }
+ 
+  .yt-embed:hover .yt-embed__play {
+    background: #cc0000;
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+ 
+  .yt-embed__play svg {
+    width: 24px;
+    height: 24px;
+    fill: #fff;
+    margin-left: 4px; /* optical centering for the triangle */
+  }
+ 
+  /* Title */
+  .yt-embed__title {
+    position: absolute;
+    bottom: 12px;
+    left: 14px;
+    right: 14px;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.4;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+ 
+  /* Duration badge */
+  .yt-embed__duration {
+    position: absolute;
+    bottom: 12px;
+    right: 14px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    pointer-events: none;
+  }
+ 
+  /* The live iframe */
+  .yt-embed iframe {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+ 
+  /* Loading shimmer state */
+  .yt-embed--loading .yt-embed__thumb,
+  .yt-embed--loading .yt-embed__play,
+  .yt-embed--loading .yt-embed__gradient,
+  .yt-embed--loading .yt-embed__title,
+  .yt-embed--loading .yt-embed__duration {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
